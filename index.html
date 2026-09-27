@@ -178,7 +178,8 @@ const TEAMS = {
   wolf:{name:'人狼陣営',win:'人狼の数が人間と同数以上になれば勝利'},
   fox:{name:'妖狐陣営',win:'ゲーム終了時に生き残っていれば単独勝利'}
 };
-const KEY = 'jinro-moderator-v2';
+const KEY = 'jinro-moderator-v3';
+const APP_VERSION = '2026.09.27-3';
 
 const PRESETS = {
   3:{wolf:1,villager:2},
@@ -201,10 +202,11 @@ function preset(n){
 const START_N = 4;
 function fresh(){
   return {
+    ver:APP_VERSION,
     screen:'setup',
     names:Array(START_N).fill(''),
     counts:preset(START_N),
-    settings:{useCards:true, firstDivine:'random', guardRepeat:false, talkMin:5, voice:true, voiceName:'', rate:1, pitch:1},
+    settings:{useCards:true, firstDivine:'none', guardRepeat:false, talkMin:3, voice:true, voiceName:'', rate:1, pitch:1},
     players:[], day:0, phase:'setup',
     queue:[], qpos:0, mode:null, sel:null, result:null,
     night:null, lastGuard:null, lastExecuted:null,
@@ -498,20 +500,15 @@ setup(){
   </section>
   <section class="panel">
     <h2>ルール</h2>
-    <div class="field"><label for="firstDivine">初日の予言</label>
-      <select id="firstDivine" data-s="firstDivine">
-        <option value="random" ${S.settings.firstDivine==='random'?'selected':''}>ランダムな白通知（人狼以外から1人）</option>
-        <option value="free" ${S.settings.firstDivine==='free'?'selected':''}>自由に1人を見られる</option>
-        <option value="none" ${S.settings.firstDivine==='none'?'selected':''}>なし</option>
-      </select></div>
     <div class="field"><label for="talkMin">昼の議論時間</label>
       <select id="talkMin" data-s="talkMin">${[2,3,4,5,6,7,8,10].map(m=>`<option value="${m}" ${S.settings.talkMin==m?'selected':''}>${m}分</option>`).join('')}</select></div>
     <label class="check"><input type="checkbox" id="guardRepeat" data-s="guardRepeat" ${S.settings.guardRepeat?'checked':''}> ボディーガードが同じ人を2晩連続で守れる</label>
     <label class="check"><input type="checkbox" id="voice" data-s="voice" ${S.settings.voice?'checked':''}> 司会のセリフを音声で読み上げる</label>
     ${voicePanel()}
-    <p class="muted" style="font-size:13px">初日の夜は襲撃なし。投票が同数なら決選投票を1回行い、それでも同数なら抽選で処刑します。</p>
+    <p class="muted" style="font-size:13px">初日の夜は襲撃と予言なし。投票が同数なら決選投票を1回行い、それでも同数なら抽選で処刑します。</p>
   </section>
-  <button class="btn" data-a="start" ${errs.length?'disabled':''}>ゲームを始める</button>`;
+  <button class="btn" data-a="start" ${errs.length?'disabled':''}>ゲームを始める</button>
+  <p class="muted" style="font-size:11px;text-align:center">バージョン ${APP_VERSION}</p>`;
 },
 
 dealIntro(){
@@ -726,9 +723,9 @@ function nightAct(i){
     }
   } else if(role==='seer'){
     const hist = S.seerHist.length?`<div class="info">これまでの予言：${S.seerHist.map(h=>`${esc(P(h.t).name)}＝<b>${h.w?'人狼':'人間'}</b>`).join('、')}</div>`:'';
-    if(S.day===0 && S.settings.firstDivine==='random'){
+    if(false){
       body += hist + `<p>初日はお告げがあります。ボタンを押すと、人狼ではない誰か1人が分かります。</p><button class="btn" data-a="doRandomSeer">お告げを見る</button>`;
-    } else if(S.day===0 && S.settings.firstDivine==='none'){
+    } else if(S.day===0){
       return `<div class="stack">${smallRole(i)}${dummy(i,'<p>初日の夜は予言ができません。</p>')}</div>`;
     } else {
       body += hist + `<p>正体を知りたい人を1人選んでください。</p>${picks(othersAlive(i),{note:k=>S.seerHist.some(h=>h.t===k)?'確認済み':''})}
@@ -841,7 +838,7 @@ app.addEventListener('click', e=>{
 
 /* ---------- boot ---------- */
 function start(data){
-  if(data && data.state){ S=data.state; if(S.screen==='day'&&S.timer.running) runTimer(); render(); return; }
+  if(data && data.state && data.state.ver===APP_VERSION){ S=data.state; if(S.screen==='day'&&S.timer.running) runTimer(); render(); return; }
   saved = loadSaved();
   render();
 }
