@@ -94,6 +94,13 @@ p{margin:0}
 .check{display:flex;gap:10px;align-items:center;font-size:14px}
 input[type="range"]{width:100%;accent-color:var(--accent)}
 .check input{width:18px;height:18px;accent-color:var(--accent)}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media (max-width:420px){.seg{grid-template-columns:1fr}}
+.seg button{background:var(--surface-2);border:1px solid var(--line);border-radius:8px;padding:12px;text-align:left;display:flex;flex-direction:column;gap:4px}
+.seg button b{font-size:16px}
+.seg button span{font-size:12px;color:var(--mute);line-height:1.5}
+.seg button[aria-checked="true"]{border-color:var(--accent);background:rgba(230,201,131,.12)}
+.seg button[aria-checked="true"] b{color:var(--accent)}
 .resume{border:1px dashed var(--accent);border-radius:10px;padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
 .resume p{flex:1 1 200px;font-size:14px}
 .resume .btn{width:auto;padding:10px 16px;font-size:14px}
@@ -191,13 +198,13 @@ function preset(n){
   return c;
 }
 
-const SAMPLE = ['ありさ','けんた','ゆうき','みなみ','しょう','はるか','だいち','さくら','りょう'];
+const START_N = 4;
 function fresh(){
   return {
     screen:'setup',
-    names:[...SAMPLE],
-    counts:preset(SAMPLE.length),
-    settings:{firstDivine:'random', guardRepeat:false, talkMin:5, voice:true, voiceName:'', rate:1, pitch:1},
+    names:Array(START_N).fill(''),
+    counts:preset(START_N),
+    settings:{useCards:true, firstDivine:'random', guardRepeat:false, talkMin:5, voice:true, voiceName:'', rate:1, pitch:1},
     players:[], day:0, phase:'setup',
     queue:[], qpos:0, mode:null, sel:null, result:null,
     night:null, lastGuard:null, lastExecuted:null,
@@ -251,6 +258,7 @@ function beep(){
 }
 function persist(){ try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){} }
 function loadSaved(){ try{ const t=localStorage.getItem(KEY); return t?JSON.parse(t):null; }catch(e){ return null; } }
+const usingCards = () => S.settings.useCards!==false;
 const phaseLabel = () => S.phase==='night' ? (S.day===0?'初日の夜':`${S.day}日目の夜`) : S.phase==='day' ? `${S.day}日目の昼` : S.phase==='end' ? 'ゲーム終了' : '準備中';
 
 /* ---------- validation ---------- */
@@ -273,14 +281,21 @@ function validate(){
 /* ---------- game flow ---------- */
 function startGame(){
   S.players = S.names.map((n,i)=>({name:n.trim(), role:null, alive:true, death:null}));
+  if(!usingCards()){
+    const roles=[]; ORDER.forEach(r=>{for(let k=0;k<S.counts[r];k++) roles.push(r);});
+    shuffle(roles).forEach((r,i)=>S.players[i].role=r);
+  }
   S.day=0; S.phase='night'; S.log=[]; S.seerHist=[]; S.mediumHist=[]; S.lastGuard=null; S.lastExecuted=null; S.winner=null;
   log(`${S.players.length}人でゲーム開始（${ORDER.filter(r=>S.counts[r]).map(r=>ROLES[r].name+S.counts[r]).join('・')}）`);
   S.mode='deal'; S.queue=S.players.map((_,i)=>i); S.qpos=0;
   S.screen='dealIntro';
   go();
-  say(DEAL_LINE);
+  say(dealLine());
+  if(!usingCards()) S.players.forEach(p=>log(`${p.name}：${ROLES[p.role].name}`, false, 'roles'));
 }
 
+const dealLine = () => usingCards() ? DEAL_LINE : DEAL_LINE_APP;
+const DEAL_LINE_APP='ゲームを始めます。これから司会が役職を配ります。端末を順番に回して、自分の役職をこっそり確認してください。';
 const DEAL_LINE='ゲームを始めます。カードをよく切って、1人1枚ずつ配ってください。自分のカードをこっそり確認したら、端末を順番に回して、自分の役職を入力してください。';
 function finishDeal(){
   const got=Object.fromEntries(ORDER.map(r=>[r,0]));
@@ -298,7 +313,7 @@ function redoDeal(){
 function nextInQueue(){
   S.sel=null; S.result=null; S.qpos++;
   if(S.qpos<S.queue.length){ S.screen='pass'; go(); return; }
-  if(S.mode==='deal'){ finishDeal(); }
+  if(S.mode==='deal'){ usingCards() ? finishDeal() : beginNight(); }
   else if(S.mode==='night'){ resolveNight(); }
   else if(S.mode==='vote'){ resolveVote(); }
 }
@@ -459,19 +474,26 @@ setup(){
   <div class="stack">
     <p class="eyebrow">SETUP</p>
     <h1>村の支度をしましょう</h1>
-    <p class="muted">役職カードを配ったあと、端末を1台、全員で順番に回して遊びます。役職の入力、夜の行動、投票の集計、勝敗の判定はこの画面が行います。</p>
+    <p class="muted">端末を1台、全員で順番に回して遊びます。夜の行動、投票の集計、勝敗の判定はこの画面が行います。</p>
   </div>
   <section class="panel">
+    <h2>遊び方</h2>
+    <div class="seg" role="radiogroup" aria-label="遊び方">
+      <button role="radio" aria-checked="${usingCards()}" data-a="mode" data-v="cards"><b>カードを使う</b><span>役職カードを配り、各自が自分の役職を入力します</span></button>
+      <button role="radio" aria-checked="${!usingCards()}" data-a="mode" data-v="app"><b>カードを使わない</b><span>司会（この画面）が役職を決めて、1人ずつこっそり知らせます</span></button>
+    </div>
+  </section>
+  <section class="panel">
     <h2>参加者 <span class="muted" style="font-size:14px">${n}人</span></h2>
-    <p class="muted" style="font-size:13px">端末を回す順番に並べてください。名前は<b>ひらがなかカタカナ</b>で入力します。入っている名前は例です。</p>
+    <p class="muted" style="font-size:13px">端末を回す順番に並べてください。名前は<b>ひらがなかカタカナ</b>で入力します。人数を変えると、役職はその人数の標準編成に切り替わります。</p>
     <div class="names">${S.names.map((x,i)=>`<div class="name-row"><span class="seat">${i+1}</span><input id="name-${i}" data-i="${i}" value="${esc(x)}" maxlength="12" placeholder="ひらがな・カタカナ" aria-invalid="${!kanaOk(x)}" aria-label="${i+1}番目の参加者"><button data-a="delName" data-i="${i}" aria-label="削除">×</button></div>`).join('')}</div>
     <div class="row"><button class="btn sec" data-a="addName">＋ 参加者を追加</button></div>
   </section>
   <section class="panel">
     <div class="row" style="align-items:center"><h2 style="flex:2">役職</h2><button class="ghost" style="flex:none" data-a="preset">${n}人の標準編成にする</button></div>
     <div class="roles">${ORDER.map(r=>`<div class="rc t-${ROLES[r].team}"><span class="dot"></span><span class="nm">${ROLES[r].name}</span><button class="step" data-a="cnt" data-r="${r}" data-d="-1" aria-label="${ROLES[r].name}を減らす">−</button><span class="ct">${S.counts[r]}</span><button class="step" data-a="cnt" data-r="${r}" data-d="1" aria-label="${ROLES[r].name}を増やす">＋</button></div>`).join('')}</div>
-    <p class="muted" style="font-size:13px">この枚数のカードを用意して配ってください。${n>9?'10人以上は9人の編成に、人狼（参加者のおよそ4分の1まで）と市民を足しています。':''}</p>
-    <div class="sum"><span>カード合計 ${total} / 参加者 ${n}</span><span><span style="color:var(--village)">●</span>村 ${ORDER.filter(r=>ROLES[r].team==='village').reduce((s,r)=>s+S.counts[r],0)}　<span style="color:var(--wolf)">●</span>狼 ${S.counts.wolf+S.counts.madman}</span></div>
+    <p class="muted" style="font-size:13px">${usingCards()?'この枚数のカードを用意して配ってください。':'司会がこの内訳で役職をランダムに配ります。'}${n>9?'10人以上は9人の編成に、人狼（参加者のおよそ4分の1まで）と市民を足しています。':''}</p>
+    <div class="sum"><span>${usingCards()?'カード':'役職'}合計 ${total} / 参加者 ${n}</span><span><span style="color:var(--village)">●</span>村 ${ORDER.filter(r=>ROLES[r].team==='village').reduce((s,r)=>s+S.counts[r],0)}　<span style="color:var(--wolf)">●</span>狼 ${S.counts.wolf+S.counts.madman}</span></div>
     ${errs.length?errs.map(e=>`<p class="err">${esc(e)}</p>`).join(''):'<p class="ok">この編成で始められます。</p>'}
   </section>
   <section class="panel">
@@ -493,6 +515,12 @@ setup(){
 },
 
 dealIntro(){
+  if(!usingCards()) return `<div class="stack" style="flex:1;justify-content:center">
+    ${script(DEAL_LINE_APP)}
+    <div class="panel"><p class="eyebrow">この村の役職　${S.players.length}人</p>
+      <div class="roles">${ORDER.filter(r=>S.counts[r]).map(r=>`<div class="rc t-${ROLES[r].team}"><span class="dot"></span><span class="nm">${ROLES[r].name}</span><span class="ct">${S.counts[r]}</span></div>`).join('')}</div></div>
+    <p class="muted">最初は「${esc(P(S.queue[0]).name)}」さんです。本人以外は画面を見ないようにしてください。</p>
+    <button class="btn" data-a="toPass">役職を配る</button></div>`;
   return `<div class="stack" style="flex:1;justify-content:center">
     ${script(DEAL_LINE)}
     <div class="panel"><p class="eyebrow">配るカード　${S.players.length}枚</p>
@@ -514,7 +542,7 @@ dealMismatch(){
 
 pass(){
   const i=S.queue[S.qpos];
-  const what = S.mode==='deal'?'役職を入力します':S.mode==='night'?'夜の行動をします':'投票します';
+  const what = S.mode==='deal'?(usingCards()?'役職を入力します':'役職を確認します'):S.mode==='night'?'夜の行動をします':'投票します';
   return `<div class="pass">
     <p class="eyebrow">${S.qpos+1} / ${S.queue.length}　${what}</p>
     <div class="who">${esc(P(i).name)}<span>さん</span></div>
@@ -526,7 +554,7 @@ pass(){
 
 act(){
   const i=S.queue[S.qpos]; const p=P(i);
-  if(S.mode==='deal') return dealCard(i);
+  if(S.mode==='deal') return usingCards() ? dealCard(i) : revealCard(i);
   if(S.mode==='night') return nightAct(i);
   if(S.mode==='vote') return voteAct(i);
 },
@@ -655,6 +683,14 @@ function partnerInfo(i){
   }
   return '';
 }
+function revealCard(i){
+  const r=ROLES[P(i).role];
+  return `<div class="stack">
+    <p class="eyebrow">${esc(P(i).name)} さんの役職</p>
+    <div class="role-card t-${r.team}"><span class="chip">${TEAMS[r.team].name}</span><div class="rn">${r.name}</div><p class="desc">${r.desc}</p><p class="desc">勝利条件：${TEAMS[r.team].win}</p></div>
+    ${partnerInfo(i)}
+    <button class="btn" data-a="next">覚えた。画面を閉じる</button></div>`;
+}
 function dealCard(i){
   const sel = S.sel!=null ? ORDER[S.sel] : null;
   return `<div class="stack">
@@ -753,8 +789,9 @@ app.addEventListener('click', e=>{
   if(a!=='quit') armedQuit=false;
   const i=S.queue[S.qpos];
   switch(a){
-    case 'addName': S.names.push(''); render(); document.getElementById('name-'+(S.names.length-1))?.focus(); break;
-    case 'delName': S.names.splice(+b.dataset.i,1); render(); break;
+    case 'mode': S.settings.useCards = b.dataset.v==='cards'; render(); break;
+    case 'addName': S.names.push(''); S.counts=preset(S.names.length); render(); document.getElementById('name-'+(S.names.length-1))?.focus(); break;
+    case 'delName': S.names.splice(+b.dataset.i,1); S.counts=preset(S.names.length); render(); break;
     case 'preset': S.counts=preset(S.names.length); render(); break;
     case 'cnt': { const r=b.dataset.r; S.counts[r]=Math.max(0,S.counts[r]+(+b.dataset.d)); render(); break; }
     case 'start': startGame(); break;
